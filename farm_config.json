@@ -1,0 +1,36 @@
+{
+  "device_id": "R5CXB2DLC2Y",
+  "max_rounds": "",
+  "delay_between_rounds_seconds": 10,
+  "restart_wait_seconds": 25,
+  "templates": {
+    "attack_home": {
+      "path": "templates/attack_home.jpg",
+      "threshold": 0.7
+    },
+    "find_match": {
+      "path": "templates/find_match.jpg",
+      "threshold": 0.7
+    },
+    "attack_army": {
+      "path": "templates/attack_army.jpg",
+      "threshold": 0.7
+    },
+    "next_button": {
+      "path": "templates/next_button.jpg",
+      "threshold": 0.75
+    },
+    "troop": {
+      "path": "templates\\custom\\troop_1779204775.png",
+      "threshold": 0.75
+    },
+    "troop_empty": {
+      "path": "templates\\custom\\troop_empty_1779204875.png",
+      "threshold": 0.7
+    },
+    "return_home": {
+      "path": "templates/return_home.jpg",
+      "threshold": 0.75
+    }
+  }
+}

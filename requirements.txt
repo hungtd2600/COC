@@ -1,0 +1,5 @@
+opencv-python
+numpy
+uiautomator2
+pillow
+pyinstaller
