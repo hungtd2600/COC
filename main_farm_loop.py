@@ -67,7 +67,7 @@ configure_adb_environment()
 
 import uiautomator2 as u2
 
-TEMPLATE_FIELDS = {
+BASE_TEMPLATE_FIELDS = {
     "attack_home": {
         "label": "Attack button on home screen",
         "path": "templates/attack_home.jpg",
@@ -88,36 +88,6 @@ TEMPLATE_FIELDS = {
         "path": "templates/next_button.jpg",
         "threshold": 0.75,
     },
-    "troop_1": {
-        "label": "Troop 1 button",
-        "path": "templates/troop_balloon.jpg",
-        "threshold": 0.75,
-    },
-    "troop_empty_1": {
-        "label": "Troop 1 empty indicator",
-        "path": "templates/troop_empty.jpg",
-        "threshold": 0.70,
-    },
-    "troop_2": {
-        "label": "Troop 2 button",
-        "path": "templates/troop_balloon.jpg",
-        "threshold": 0.75,
-    },
-    "troop_empty_2": {
-        "label": "Troop 2 empty indicator",
-        "path": "templates/troop_empty.jpg",
-        "threshold": 0.70,
-    },
-    "troop_3": {
-        "label": "Troop 3 button",
-        "path": "templates/troop_balloon.jpg",
-        "threshold": 0.75,
-    },
-    "troop_empty_3": {
-        "label": "Troop 3 empty indicator",
-        "path": "templates/troop_empty.jpg",
-        "threshold": 0.70,
-    },
     "return_home": {
         "label": "Return Home button",
         "path": "templates/return_home.jpg",
@@ -126,55 +96,339 @@ TEMPLATE_FIELDS = {
 }
 
 
-TROOP_SLOTS = [
-    {
-        "name": "Troop 1",
-        "button_key": "troop_1",
-        "empty_key": "troop_empty_1",
-    },
-    {
-        "name": "Troop 2",
-        "button_key": "troop_2",
-        "empty_key": "troop_empty_2",
-    },
-    {
-        "name": "Troop 3",
-        "button_key": "troop_3",
-        "empty_key": "troop_empty_3",
-    },
-]
+TROOP_BUTTON_TEMPLATE = {
+    "path": "templates/troop_balloon.jpg",
+    "threshold": 0.75,
+}
+TROOP_EMPTY_TEMPLATE = {
+    "path": "templates/troop_empty.jpg",
+    "threshold": 0.70,
+}
+DEFAULT_TROOP_HOLD_SECONDS = 0.5
+SPELL_BUTTON_TEMPLATE = {
+    "path": "templates/troop_balloon.jpg",
+    "threshold": 0.75,
+}
+SPELL_EMPTY_TEMPLATE = {
+    "path": "templates/troop_empty.jpg",
+    "threshold": 0.70,
+}
+DEFAULT_SPELL_DEPLOY_SECONDS = 1.5
 
 
-def default_config() -> dict:
+def troop_button_key(index: int) -> str:
+    return f"troop_{index}"
+
+
+def troop_empty_key(index: int) -> str:
+    return f"troop_empty_{index}"
+
+
+def spell_button_key(index: int) -> str:
+    return f"spell_{index}"
+
+
+def spell_empty_key(index: int) -> str:
+    return f"spell_empty_{index}"
+
+
+def troop_slot(index: int) -> dict:
+    return {
+        "index": index,
+        "kind": "troop",
+        "name": f"Troop {index}",
+        "button_key": troop_button_key(index),
+        "empty_key": troop_empty_key(index),
+    }
+
+
+def spell_slot(index: int) -> dict:
+    return {
+        "index": index,
+        "kind": "spell",
+        "name": f"Spell {index}",
+        "button_key": spell_button_key(index),
+        "empty_key": spell_empty_key(index),
+    }
+
+
+def get_troop_count(config: Optional[dict] = None) -> int:
+    if config:
+        try:
+            troop_count = int(config.get("troop_count", 0))
+        except (TypeError, ValueError):
+            troop_count = 0
+
+        templates = config.get("templates", {})
+        for key in templates:
+            if key.startswith("troop_empty_"):
+                suffix = key.removeprefix("troop_empty_")
+            elif key.startswith("troop_"):
+                suffix = key.removeprefix("troop_")
+            else:
+                continue
+
+            if suffix.isdigit():
+                troop_count = max(troop_count, int(suffix))
+
+        return max(1, troop_count)
+
+    return 1
+
+
+def get_spell_count(config: Optional[dict] = None) -> int:
+    if config:
+        try:
+            spell_count = int(config.get("spell_count", 0))
+        except (TypeError, ValueError):
+            spell_count = 0
+
+        templates = config.get("templates", {})
+        for key in templates:
+            if key.startswith("spell_empty_"):
+                suffix = key.removeprefix("spell_empty_")
+            elif key.startswith("spell_"):
+                suffix = key.removeprefix("spell_")
+            else:
+                continue
+
+            if suffix.isdigit():
+                spell_count = max(spell_count, int(suffix))
+
+        return max(0, spell_count)
+
+    return 0
+
+
+def get_troop_slots(config: Optional[dict] = None) -> list[dict]:
+    return [troop_slot(index) for index in range(1, get_troop_count(config) + 1)]
+
+
+def get_spell_slots(config: Optional[dict] = None) -> list[dict]:
+    return [spell_slot(index) for index in range(1, get_spell_count(config) + 1)]
+
+
+def get_troop_deploy_order(config: Optional[dict] = None) -> list[int]:
+    troop_count = get_troop_count(config)
+    default_order = list(range(1, troop_count + 1))
+
+    if not config:
+        return default_order
+
+    raw_order = config.get("troop_deploy_order", default_order)
+    order: list[int] = []
+    seen: set[int] = set()
+
+    if isinstance(raw_order, list):
+        for value in raw_order:
+            try:
+                troop_index = int(value)
+            except (TypeError, ValueError):
+                continue
+
+            if 1 <= troop_index <= troop_count and troop_index not in seen:
+                order.append(troop_index)
+                seen.add(troop_index)
+
+    for troop_index in default_order:
+        if troop_index not in seen:
+            order.append(troop_index)
+
+    return order
+
+
+def get_ordered_troop_slots(config: Optional[dict] = None) -> list[dict]:
+    return [troop_slot(index) for index in get_troop_deploy_order(config)]
+
+
+def deploy_item_id(slot: dict) -> str:
+    return f"{slot['kind']}:{slot['index']}"
+
+
+def get_deploy_slots(config: Optional[dict] = None) -> list[dict]:
+    return get_troop_slots(config) + get_spell_slots(config)
+
+
+def get_deploy_order(config: Optional[dict] = None) -> list[str]:
+    slots = get_deploy_slots(config)
+    default_order = [deploy_item_id(slot) for slot in slots]
+
+    if not config:
+        return default_order
+
+    raw_order = config.get("deploy_order")
+    if raw_order is None:
+        raw_order = [f"troop:{index}" for index in get_troop_deploy_order(config)]
+        raw_order.extend(f"spell:{index}" for index in range(1, get_spell_count(config) + 1))
+
+    order: list[str] = []
+    seen: set[str] = set()
+
+    if isinstance(raw_order, list):
+        for value in raw_order:
+            item_id = str(value)
+            if item_id in default_order and item_id not in seen:
+                order.append(item_id)
+                seen.add(item_id)
+
+    for item_id in default_order:
+        if item_id not in seen:
+            order.append(item_id)
+
+    return order
+
+
+def get_ordered_deploy_slots(config: Optional[dict] = None) -> list[dict]:
+    slots_by_id = {
+        deploy_item_id(slot): slot
+        for slot in get_deploy_slots(config)
+    }
+    return [
+        slots_by_id[item_id]
+        for item_id in get_deploy_order(config)
+        if item_id in slots_by_id
+    ]
+
+
+def get_troop_hold_seconds(config: Optional[dict], troop_index: int) -> float:
+    if not config:
+        return DEFAULT_TROOP_HOLD_SECONDS
+
+    raw_values = config.get("troop_hold_seconds", {})
+    if not isinstance(raw_values, dict):
+        return DEFAULT_TROOP_HOLD_SECONDS
+
+    try:
+        hold_seconds = float(raw_values.get(str(troop_index), DEFAULT_TROOP_HOLD_SECONDS))
+    except (TypeError, ValueError):
+        return DEFAULT_TROOP_HOLD_SECONDS
+
+    return max(0.05, hold_seconds)
+
+
+def get_all_troop_hold_seconds(config: Optional[dict]) -> dict[str, float]:
+    return {
+        str(troop_index): get_troop_hold_seconds(config, troop_index)
+        for troop_index in range(1, get_troop_count(config) + 1)
+    }
+
+
+def get_spell_deploy_seconds(config: Optional[dict], spell_index: int) -> float:
+    if not config:
+        return DEFAULT_SPELL_DEPLOY_SECONDS
+
+    raw_values = config.get("spell_deploy_seconds", {})
+    if not isinstance(raw_values, dict):
+        return DEFAULT_SPELL_DEPLOY_SECONDS
+
+    try:
+        deploy_seconds = float(
+            raw_values.get(str(spell_index), DEFAULT_SPELL_DEPLOY_SECONDS)
+        )
+    except (TypeError, ValueError):
+        return DEFAULT_SPELL_DEPLOY_SECONDS
+
+    return max(0.1, deploy_seconds)
+
+
+def get_all_spell_deploy_seconds(config: Optional[dict]) -> dict[str, float]:
+    return {
+        str(spell_index): get_spell_deploy_seconds(config, spell_index)
+        for spell_index in range(1, get_spell_count(config) + 1)
+    }
+
+
+def build_template_fields(troop_count: int = 1, spell_count: int = 0) -> dict:
+    fields = {
+        key: value
+        for key, value in BASE_TEMPLATE_FIELDS.items()
+        if key != "return_home"
+    }
+
+    for index in range(1, max(1, troop_count) + 1):
+        fields[troop_button_key(index)] = {
+            "label": f"Troop {index} button",
+            **TROOP_BUTTON_TEMPLATE,
+        }
+        fields[troop_empty_key(index)] = {
+            "label": f"Troop {index} empty indicator",
+            **TROOP_EMPTY_TEMPLATE,
+        }
+
+    fields["return_home"] = BASE_TEMPLATE_FIELDS["return_home"]
+    return fields
+
+
+TEMPLATE_FIELDS = build_template_fields()
+
+
+def template_field_label(key: str) -> str:
+    return build_template_fields(
+        get_troop_count({"templates": {key: {}}}),
+        get_spell_count({"templates": {key: {}}})
+    ).get(
+        key,
+        {"label": key}
+    )["label"]
+
+
+def default_config(troop_count: int = 1, spell_count: int = 0) -> dict:
+    template_fields = build_template_fields(troop_count, spell_count)
     return {
         "device_id": "",
         "max_rounds": "",
         "delay_between_rounds_seconds": 10,
         "restart_wait_seconds": 25,
+        "troop_count": max(1, troop_count),
+        "spell_count": max(0, spell_count),
+        "deploy_order": [
+            f"troop:{index}"
+            for index in range(1, max(1, troop_count) + 1)
+        ] + [
+            f"spell:{index}"
+            for index in range(1, max(0, spell_count) + 1)
+        ],
+        "troop_deploy_order": list(range(1, max(1, troop_count) + 1)),
+        "troop_hold_seconds": {
+            str(index): DEFAULT_TROOP_HOLD_SECONDS
+            for index in range(1, max(1, troop_count) + 1)
+        },
+        "spell_deploy_seconds": {
+            str(index): DEFAULT_SPELL_DEPLOY_SECONDS
+            for index in range(1, max(0, spell_count) + 1)
+        },
         "templates": {
             key: {
                 "path": value["path"],
                 "threshold": value["threshold"],
             }
-            for key, value in TEMPLATE_FIELDS.items()
+            for key, value in template_fields.items()
         },
     }
 
 
 def load_config(config_path: str | Path = CONFIG_PATH) -> dict:
-    config = default_config()
     path = resolve_app_path(config_path)
 
     if not path.exists():
-        return config
+        return default_config()
 
     try:
         loaded = json.loads(path.read_text(encoding="utf-8"))
     except Exception as error:
         print(f"Cannot load config, using defaults: {error}")
-        return config
+        return default_config()
 
+    troop_count = get_troop_count(loaded)
+    spell_count = get_spell_count(loaded)
+    config = default_config(troop_count, spell_count)
     config.update({key: value for key, value in loaded.items() if key != "templates"})
+    config["troop_count"] = troop_count
+    config["spell_count"] = spell_count
+    config["deploy_order"] = get_deploy_order(config)
+    config["troop_deploy_order"] = get_troop_deploy_order(config)
+    config["troop_hold_seconds"] = get_all_troop_hold_seconds(config)
+    config["spell_deploy_seconds"] = get_all_spell_deploy_seconds(config)
     loaded_templates = dict(loaded.get("templates", {}))
     legacy_template_keys = {
         "troop": "troop_1",
@@ -641,16 +895,21 @@ def wait_until_base_found(
     )
 
 
-def adjust_base_view(device_id: Optional[str] = None) -> bool:
+def adjust_base_view(
+    device_id: Optional[str] = None,
+    device=None,
+    screen_size: Optional[tuple[int, int]] = None
+) -> bool:
     try:
-        device = connect_uiautomator2(device_id)
+        if device is None:
+            device = connect_uiautomator2(device_id)
         if device is None:
             return False
 
-        width, height = device.window_size()
+        width, height = screen_size if screen_size else device.window_size()
 
         start_x = int(width * 0.50)
-        start_y = int(height * 0.82)
+        start_y = int(height * 0.7)
 
         end_x = int(width * 0.50)
         end_y = int(height * 0.30)
@@ -707,12 +966,12 @@ def select_troop(
     stop_event: Optional[threading.Event] = None
 ) -> bool:
     if troop_slot is None:
-        troop_slot = TROOP_SLOTS[0]
+        troop_slot = get_troop_slots(config)[0]
 
     return bot.wait_and_tap_image(
         template_path=template_path(config, troop_slot["button_key"]),
         threshold=template_threshold(config, troop_slot["button_key"]),
-        interval_seconds=2,
+        interval_seconds=0.2,
         timeout_seconds=30,
         stop_event=stop_event
     )
@@ -724,11 +983,18 @@ def is_troop_empty(
     troop_slot: Optional[dict] = None
 ) -> bool:
     if troop_slot is None:
-        troop_slot = TROOP_SLOTS[0]
+        troop_slot = get_troop_slots(config)[0]
 
     return bot.find_image(
         template_path=template_path(config, troop_slot["empty_key"]),
         threshold=template_threshold(config, troop_slot["empty_key"])
+    ) is not None
+
+
+def is_return_home_visible(bot: AdbImageBot, config: dict) -> bool:
+    return bot.find_image(
+        template_path=template_path(config, "return_home"),
+        threshold=template_threshold(config, "return_home")
     ) is not None
 
 
@@ -739,8 +1005,9 @@ def hold_two_points_alternating(
     right_x: int,
     right_y: int,
     total_seconds: float = 10,
-    hold_each_seconds: float = 2
-) -> None:
+    hold_each_seconds: float = 2,
+    should_stop=None
+) -> bool:
     end_time = time.time() + total_seconds
 
     while time.time() < end_time:
@@ -752,6 +1019,9 @@ def hold_two_points_alternating(
             duration=hold_each_seconds
         )
 
+        if should_stop and should_stop():
+            return True
+
         device.swipe(
             right_x,
             right_y,
@@ -760,25 +1030,34 @@ def hold_two_points_alternating(
             duration=hold_each_seconds
         )
 
+        if should_stop and should_stop():
+            return True
+
+    return False
+
 
 def deploy_at_two_corner_points_until_empty(
     bot: AdbImageBot,
     device_id: Optional[str] = None,
     config: Optional[dict] = None,
     troop_slot: Optional[dict] = None,
-    stop_event: Optional[threading.Event] = None
+    stop_event: Optional[threading.Event] = None,
+    device=None,
+    screen_size: Optional[tuple[int, int]] = None
 ) -> bool:
     if config is None:
         config = default_config()
 
     if troop_slot is None:
-        troop_slot = TROOP_SLOTS[0]
+        troop_slot = get_troop_slots(config)[0]
 
-    device = connect_uiautomator2(device_id)
+    if device is None:
+        device = connect_uiautomator2(device_id)
     if device is None:
         return False
 
-    width, height = device.window_size()
+    width, height = screen_size if screen_size else device.window_size()
+    hold_each_seconds = get_troop_hold_seconds(config, troop_slot["index"])
 
     deploy_pairs = [
         {
@@ -808,16 +1087,21 @@ def deploy_at_two_corner_points_until_empty(
         },
     ]
 
-    retry_delay_seconds = 0.5
+    retry_delay_seconds = 0.1
 
-    for pair in deploy_pairs:
+    for pair_index, pair in enumerate(deploy_pairs):
         if stop_event and stop_event.is_set():
             print("Stopped before next deploy pair")
             return False
 
-        if is_troop_empty(bot, config, troop_slot):
-            print(f"{troop_slot['name']} is empty before next deploy pair")
-            return True
+        if pair_index > 0:
+            if is_troop_empty(bot, config, troop_slot):
+                print(f"{troop_slot['name']} is empty before next deploy pair")
+                return True
+
+            if is_return_home_visible(bot, config):
+                print("Return Home visible before next deploy pair")
+                return True
 
         left_x = int(width * pair["left"][0])
         left_y = int(height * pair["left"][1])
@@ -829,20 +1113,45 @@ def deploy_at_two_corner_points_until_empty(
             f"left=({left_x}, {left_y}), right=({right_x}, {right_y})"
         )
 
-        hold_two_points_alternating(
+        def should_stop_deploying() -> bool:
+            if stop_event and stop_event.is_set():
+                print("Stopped while deploying")
+                return True
+
+            if is_troop_empty(bot, config, troop_slot):
+                print(f"{troop_slot['name']} is empty")
+                return True
+
+            if is_return_home_visible(bot, config):
+                print("Return Home visible while deploying")
+                return True
+
+            return False
+
+        stopped_early = hold_two_points_alternating(
             device=device,
             left_x=left_x,
             left_y=left_y,
             right_x=right_x,
             right_y=right_y,
             total_seconds=10,
-            hold_each_seconds=1
+            hold_each_seconds=hold_each_seconds,
+            should_stop=should_stop_deploying
         )
+
+        if stopped_early:
+            if stop_event and stop_event.is_set():
+                return False
+            return True
 
         time.sleep(retry_delay_seconds)
 
         if is_troop_empty(bot, config, troop_slot):
             print(f"{troop_slot['name']} is empty")
+            return True
+
+        if is_return_home_visible(bot, config):
+            print("Return Home visible after deploy pair")
             return True
 
     print(f"{troop_slot['name']} is not empty after all deploy pairs")
@@ -938,37 +1247,53 @@ def run_single_farm_round(
 
     print("Base found")
 
+    battle_device = connect_uiautomator2(device_id)
+    if battle_device is None:
+        print("Failed to connect deploy device")
+        return False
+    battle_screen_size = battle_device.window_size()
+
     print("\nStep 5 - Adjust base view")
-    if not adjust_base_view(device_id=device_id):
+    if not adjust_base_view(
+        device_id=device_id,
+        device=battle_device,
+        screen_size=battle_screen_size
+    ):
         print("Failed to adjust base view")
         return False
 
     print("Base view adjusted")
 
-    for troop_index, troop_slot in enumerate(TROOP_SLOTS, start=1):
+    for deploy_index, deploy_slot in enumerate(get_ordered_troop_slots(config), start=1):
         if stop_event and stop_event.is_set():
             print("Stopped before next troop")
             return False
 
-        print(f"\nStep 6.{troop_index} - Select {troop_slot['name']}")
-        if not select_troop(bot, config, troop_slot, stop_event=stop_event):
-            print(f"Failed to select {troop_slot['name']}")
+        if is_return_home_visible(bot, config):
+            print("Return Home visible before next troop. Skip remaining troops.")
+            break
+
+        print(f"\nStep 6.{deploy_index} - Select {deploy_slot['name']}")
+        if not select_troop(bot, config, deploy_slot, stop_event=stop_event):
+            print(f"Failed to select {deploy_slot['name']}")
             return False
 
-        print(f"{troop_slot['name']} selected")
+        print(f"{deploy_slot['name']} selected")
 
-        print(f"\nStep 7.{troop_index} - Deploy {troop_slot['name']} at two corner points")
+        print(f"\nStep 7.{deploy_index} - Deploy {deploy_slot['name']} at two corner points")
         if not deploy_at_two_corner_points_until_empty(
             bot,
             device_id=device_id,
             config=config,
-            troop_slot=troop_slot,
-            stop_event=stop_event
+            troop_slot=deploy_slot,
+            stop_event=stop_event,
+            device=battle_device,
+            screen_size=battle_screen_size
         ):
-            print(f"Failed to deploy all {troop_slot['name']}")
+            print(f"Failed to deploy all {deploy_slot['name']}")
             return False
 
-        print(f"{troop_slot['name']} deployed completely")
+        print(f"{deploy_slot['name']} deployed completely")
 
     print("\nStep 8 - Wait and Return Home")
     if not wait_and_return_home(bot, config, stop_event=stop_event):
@@ -1078,7 +1403,7 @@ class CropWindow:
         self.rect_id: Optional[int] = None
 
         self.window = tk.Toplevel(parent)
-        self.window.title(f"Crop - {TEMPLATE_FIELDS[template_key]['label']}")
+        self.window.title(f"Crop - {template_field_label(template_key)}")
         self.window.transient(parent)
         self.window.grab_set()
 
@@ -1269,8 +1594,16 @@ class FarmBotApp:
         self.root.geometry("1180x720")
 
         self.config = load_config()
+        self.troop_count = get_troop_count(self.config)
+        self.spell_count = 0
+        self.template_fields = build_template_fields(self.troop_count, self.spell_count)
         self.path_vars: dict[str, tk.StringVar] = {}
         self.threshold_vars: dict[str, tk.DoubleVar] = {}
+        self.deploy_order_vars: dict[int, tk.IntVar] = {}
+        self.hold_seconds_vars: dict[int, tk.DoubleVar] = {}
+        self.preview_images: dict[str, ImageTk.PhotoImage] = {}
+        self.preview_labels: dict[str, ttk.Label] = {}
+        self.template_row_widgets: list[tk.Widget] = []
         self.log_queue: queue.Queue = queue.Queue()
         self.worker_thread: Optional[threading.Thread] = None
         self.stop_event = threading.Event()
@@ -1374,54 +1707,19 @@ class FarmBotApp:
             pady=(8, 0)
         )
 
-        templates = ttk.LabelFrame(container, text="Images and Scores", padding=10)
-        templates.pack(fill=tk.X, pady=(12, 0))
+        self.templates_frame = ttk.LabelFrame(container, text="Images and Scores", padding=10)
+        self.templates_frame.pack(fill=tk.X, pady=(12, 0))
 
-        ttk.Label(templates, text="Action").grid(row=0, column=0, sticky=tk.W)
-        ttk.Label(templates, text="Image").grid(row=0, column=1, sticky=tk.W)
-        ttk.Label(templates, text="Score").grid(row=0, column=4, sticky=tk.W)
+        ttk.Label(self.templates_frame, text="Action").grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(self.templates_frame, text="Image").grid(row=0, column=1, sticky=tk.W)
+        ttk.Label(self.templates_frame, text="Score").grid(row=0, column=4, sticky=tk.W)
+        ttk.Label(self.templates_frame, text="Preview").grid(row=0, column=5, sticky=tk.W)
+        ttk.Label(self.templates_frame, text="Deploy order").grid(row=0, column=6, sticky=tk.W)
+        ttk.Label(self.templates_frame, text="Hold sec").grid(row=0, column=7, sticky=tk.W)
+        ttk.Label(self.templates_frame, text="Troop").grid(row=0, column=8, sticky=tk.W)
 
-        for row_index, (key, field) in enumerate(TEMPLATE_FIELDS.items(), start=1):
-            template_config = self.config["templates"][key]
-            path_var = tk.StringVar(value=template_config["path"])
-            threshold_var = tk.DoubleVar(value=float(template_config["threshold"]))
-            self.path_vars[key] = path_var
-            self.threshold_vars[key] = threshold_var
-
-            ttk.Label(templates, text=field["label"]).grid(
-                row=row_index,
-                column=0,
-                sticky=tk.W,
-                pady=4
-            )
-            ttk.Entry(templates, textvariable=path_var).grid(
-                row=row_index,
-                column=1,
-                sticky=tk.EW,
-                padx=(8, 8),
-                pady=4
-            )
-            ttk.Button(
-                templates,
-                text="Browse",
-                command=lambda selected_key=key: self._browse_image(selected_key)
-            ).grid(row=row_index, column=2, sticky=tk.W, pady=4)
-            ttk.Button(
-                templates,
-                text="Crop",
-                command=lambda selected_key=key: self._open_crop_window(selected_key)
-            ).grid(row=row_index, column=3, sticky=tk.W, padx=(8, 0), pady=4)
-            ttk.Spinbox(
-                templates,
-                from_=0.01,
-                to=1.00,
-                increment=0.01,
-                textvariable=threshold_var,
-                width=7,
-                format="%.2f"
-            ).grid(row=row_index, column=4, sticky=tk.W, padx=(8, 0), pady=4)
-
-        templates.columnconfigure(1, weight=1)
+        self.templates_frame.columnconfigure(1, weight=1)
+        self._render_template_rows()
 
         actions = ttk.Frame(container)
         actions.pack(fill=tk.X, pady=(12, 0))
@@ -1460,6 +1758,621 @@ class FarmBotApp:
         self.log_text = ScrolledText(log_frame, height=18, state=tk.DISABLED)
         self.log_text.pack(fill=tk.BOTH, expand=True)
 
+    def _ensure_template_config(self, key: str) -> dict:
+        default_template = self.template_fields[key]
+        return self.config.setdefault("templates", {}).setdefault(
+            key,
+            {
+                "path": default_template["path"],
+                "threshold": default_template["threshold"],
+            }
+        )
+
+    def _deploy_position_by_troop_index(self) -> dict[int, int]:
+        return {
+            troop_index: position
+            for position, troop_index in enumerate(
+                get_troop_deploy_order(self.config),
+                start=1
+            )
+        }
+
+    def _deploy_position_by_item_id(self) -> dict[str, int]:
+        return {
+            item_id: position
+            for position, item_id in enumerate(get_deploy_order(self.config), start=1)
+        }
+
+    def _refresh_preview(self, key: str) -> None:
+        preview_label = self.preview_labels.get(key)
+        path_var = self.path_vars.get(key)
+        if preview_label is None or path_var is None:
+            return
+
+        image_path = path_var.get().strip()
+        if not image_path:
+            preview_label.configure(image="", text="No image")
+            self.preview_images.pop(key, None)
+            return
+
+        resolved_path = resolve_app_path(image_path)
+        if not resolved_path.exists():
+            preview_label.configure(image="", text="Missing")
+            self.preview_images.pop(key, None)
+            return
+
+        try:
+            image = Image.open(resolved_path).convert("RGB")
+            resample_filter = getattr(Image, "Resampling", Image).LANCZOS
+            image.thumbnail((48, 48), resample_filter)
+            photo = ImageTk.PhotoImage(image)
+        except Exception:
+            preview_label.configure(image="", text="Invalid")
+            self.preview_images.pop(key, None)
+            return
+
+        self.preview_images[key] = photo
+        preview_label.configure(image=photo, text="")
+
+    def _render_template_rows(self) -> None:
+        for widget in self.template_row_widgets:
+            widget.destroy()
+        self.template_row_widgets.clear()
+        self.preview_labels.clear()
+        self.preview_images.clear()
+
+        self.template_fields = build_template_fields(self.troop_count, self.spell_count)
+        deploy_position_by_item_id = self._deploy_position_by_item_id()
+        deploy_item_count = self.troop_count + self.spell_count
+        for row_index, (key, field) in enumerate(self.template_fields.items(), start=1):
+            template_config = self._ensure_template_config(key)
+            path_var = self.path_vars.get(key)
+            if path_var is None:
+                path_var = tk.StringVar(value=template_config["path"])
+                self.path_vars[key] = path_var
+            else:
+                path_var.set(template_config["path"])
+
+            threshold_var = self.threshold_vars.get(key)
+            if threshold_var is None:
+                threshold_var = tk.DoubleVar(value=float(template_config["threshold"]))
+                self.threshold_vars[key] = threshold_var
+            else:
+                threshold_var.set(float(template_config["threshold"]))
+
+            row_widgets = [
+                ttk.Label(self.templates_frame, text=field["label"]),
+                ttk.Entry(self.templates_frame, textvariable=path_var),
+                ttk.Button(
+                    self.templates_frame,
+                    text="Browse",
+                    command=lambda selected_key=key: self._browse_image(selected_key)
+                ),
+                ttk.Button(
+                    self.templates_frame,
+                    text="Crop",
+                    command=lambda selected_key=key: self._open_crop_window(selected_key)
+                ),
+                ttk.Spinbox(
+                    self.templates_frame,
+                    from_=0.01,
+                    to=1.00,
+                    increment=0.01,
+                    textvariable=threshold_var,
+                    width=7,
+                    format="%.2f"
+                ),
+            ]
+
+            deploy_order_widget = None
+            hold_seconds_widget = None
+            preview_label = None
+            remove_button = None
+            if key.startswith("troop_") and not key.startswith("troop_empty_"):
+                troop_index = int(key.removeprefix("troop_"))
+                deploy_order_var = self.deploy_order_vars.get(troop_index)
+                if deploy_order_var is None:
+                    deploy_order_var = tk.IntVar(
+                        value=deploy_position_by_item_id.get(f"troop:{troop_index}", troop_index)
+                    )
+                    self.deploy_order_vars[troop_index] = deploy_order_var
+                else:
+                    deploy_order_var.set(
+                        deploy_position_by_item_id.get(f"troop:{troop_index}", troop_index)
+                    )
+
+                deploy_order_widget = ttk.Spinbox(
+                    self.templates_frame,
+                    from_=1,
+                    to=max(1, deploy_item_count),
+                    textvariable=deploy_order_var,
+                    width=7
+                )
+                row_widgets.append(deploy_order_widget)
+
+                hold_seconds_var = self.hold_seconds_vars.get(troop_index)
+                if hold_seconds_var is None:
+                    hold_seconds_var = tk.DoubleVar(
+                        value=get_troop_hold_seconds(self.config, troop_index)
+                    )
+                    self.hold_seconds_vars[troop_index] = hold_seconds_var
+                else:
+                    hold_seconds_var.set(get_troop_hold_seconds(self.config, troop_index))
+
+                hold_seconds_widget = ttk.Spinbox(
+                    self.templates_frame,
+                    from_=0.05,
+                    to=10.0,
+                    increment=0.05,
+                    textvariable=hold_seconds_var,
+                    width=7,
+                    format="%.2f"
+                )
+                row_widgets.append(hold_seconds_widget)
+
+                preview_label = ttk.Label(self.templates_frame, width=8)
+                self.preview_labels[key] = preview_label
+                row_widgets.append(preview_label)
+
+                remove_button = ttk.Button(
+                    self.templates_frame,
+                    text="Remove",
+                    command=lambda selected_index=troop_index: self._remove_troop(
+                        selected_index
+                    )
+                )
+                row_widgets.append(remove_button)
+
+            if key.startswith("spell_") and not key.startswith("spell_empty_"):
+                spell_index = int(key.removeprefix("spell_"))
+                deploy_order_var = self.deploy_order_vars.get(-spell_index)
+                if deploy_order_var is None:
+                    deploy_order_var = tk.IntVar(
+                        value=deploy_position_by_item_id.get(
+                            f"spell:{spell_index}",
+                            self.troop_count + spell_index
+                        )
+                    )
+                    self.deploy_order_vars[-spell_index] = deploy_order_var
+                else:
+                    deploy_order_var.set(
+                        deploy_position_by_item_id.get(
+                            f"spell:{spell_index}",
+                            self.troop_count + spell_index
+                        )
+                    )
+
+                deploy_order_widget = ttk.Spinbox(
+                    self.templates_frame,
+                    from_=1,
+                    to=max(1, deploy_item_count),
+                    textvariable=deploy_order_var,
+                    width=7
+                )
+                row_widgets.append(deploy_order_widget)
+
+                hold_seconds_var = self.hold_seconds_vars.get(-spell_index)
+                if hold_seconds_var is None:
+                    hold_seconds_var = tk.DoubleVar(
+                        value=get_spell_deploy_seconds(self.config, spell_index)
+                    )
+                    self.hold_seconds_vars[-spell_index] = hold_seconds_var
+                else:
+                    hold_seconds_var.set(get_spell_deploy_seconds(self.config, spell_index))
+
+                hold_seconds_widget = ttk.Spinbox(
+                    self.templates_frame,
+                    from_=0.1,
+                    to=10.0,
+                    increment=0.1,
+                    textvariable=hold_seconds_var,
+                    width=7,
+                    format="%.1f"
+                )
+                row_widgets.append(hold_seconds_widget)
+
+                preview_label = ttk.Label(self.templates_frame, width=8)
+                self.preview_labels[key] = preview_label
+                row_widgets.append(preview_label)
+
+                remove_button = ttk.Button(
+                    self.templates_frame,
+                    text="Remove",
+                    command=lambda selected_index=spell_index: self._remove_spell(
+                        selected_index
+                    )
+                )
+                row_widgets.append(remove_button)
+
+            row_widgets[0].grid(row=row_index, column=0, sticky=tk.W, pady=4)
+            row_widgets[1].grid(row=row_index, column=1, sticky=tk.EW, padx=(8, 8), pady=4)
+            row_widgets[2].grid(row=row_index, column=2, sticky=tk.W, pady=4)
+            row_widgets[3].grid(row=row_index, column=3, sticky=tk.W, padx=(8, 0), pady=4)
+            row_widgets[4].grid(row=row_index, column=4, sticky=tk.W, padx=(8, 0), pady=4)
+            if preview_label is not None:
+                preview_label.grid(
+                    row=row_index,
+                    column=5,
+                    sticky=tk.W,
+                    padx=(8, 0),
+                    pady=4
+                )
+                self._refresh_preview(key)
+            if deploy_order_widget is not None:
+                deploy_order_widget.grid(
+                    row=row_index,
+                    column=6,
+                    sticky=tk.W,
+                    padx=(8, 0),
+                    pady=4
+                )
+            if hold_seconds_widget is not None:
+                hold_seconds_widget.grid(
+                    row=row_index,
+                    column=7,
+                    sticky=tk.W,
+                    padx=(8, 0),
+                    pady=4
+                )
+            if remove_button is not None:
+                remove_button.grid(
+                    row=row_index,
+                    column=8,
+                    sticky=tk.W,
+                    padx=(8, 0),
+                    pady=4
+                )
+
+            self.template_row_widgets.extend(row_widgets)
+
+        add_button = ttk.Button(
+            self.templates_frame,
+            text="Add Troop",
+            command=self._add_troop
+        )
+        add_button.grid(
+            row=len(self.template_fields) + 1,
+            column=0,
+            sticky=tk.W,
+            pady=(8, 0)
+        )
+        self.template_row_widgets.append(add_button)
+
+    def _troop_deploy_order_from_ui(self) -> list[int]:
+        order_by_position: dict[int, int] = {}
+
+        for troop_index in range(1, self.troop_count + 1):
+            deploy_order_var = self.deploy_order_vars.get(troop_index)
+            if deploy_order_var is None:
+                position = troop_index
+            else:
+                position = int(deploy_order_var.get())
+
+            if position < 1 or position > self.troop_count:
+                raise ValueError(
+                    f"Deploy order for Troop {troop_index} must be 1-{self.troop_count}"
+                )
+
+            if position in order_by_position:
+                other_troop_index = order_by_position[position]
+                raise ValueError(
+                    f"Deploy order {position} is used by Troop "
+                    f"{other_troop_index} and Troop {troop_index}"
+                )
+
+            order_by_position[position] = troop_index
+
+        return [
+            order_by_position[position]
+            for position in range(1, self.troop_count + 1)
+        ]
+
+    def _deploy_order_from_ui(self) -> list[str]:
+        order_by_position: dict[int, str] = {}
+        deploy_item_count = self.troop_count + self.spell_count
+
+        for troop_index in range(1, self.troop_count + 1):
+            deploy_order_var = self.deploy_order_vars.get(troop_index)
+            position = int(deploy_order_var.get()) if deploy_order_var else troop_index
+            item_id = f"troop:{troop_index}"
+            self._add_deploy_order_position(
+                order_by_position,
+                position,
+                item_id,
+                f"Troop {troop_index}",
+                deploy_item_count
+            )
+
+        for spell_index in range(1, self.spell_count + 1):
+            deploy_order_var = self.deploy_order_vars.get(-spell_index)
+            position = (
+                int(deploy_order_var.get())
+                if deploy_order_var
+                else self.troop_count + spell_index
+            )
+            item_id = f"spell:{spell_index}"
+            self._add_deploy_order_position(
+                order_by_position,
+                position,
+                item_id,
+                f"Spell {spell_index}",
+                deploy_item_count
+            )
+
+        return [
+            order_by_position[position]
+            for position in range(1, deploy_item_count + 1)
+        ]
+
+    def _add_deploy_order_position(
+        self,
+        order_by_position: dict[int, str],
+        position: int,
+        item_id: str,
+        label: str,
+        deploy_item_count: int
+    ) -> None:
+        if position < 1 or position > deploy_item_count:
+            raise ValueError(
+                f"Deploy order for {label} must be 1-{deploy_item_count}"
+            )
+
+        if position in order_by_position:
+            raise ValueError(f"Deploy order {position} is used more than once")
+
+        order_by_position[position] = item_id
+
+    def _sync_template_values_to_config(self) -> None:
+        self.config["troop_count"] = self.troop_count
+        self.config["spell_count"] = self.spell_count
+        deploy_order = self._deploy_order_from_ui()
+        self.config["deploy_order"] = deploy_order
+        self.config["troop_deploy_order"] = [
+            int(item_id.split(":", 1)[1])
+            for item_id in deploy_order
+            if item_id.startswith("troop:")
+        ]
+        self.config["troop_hold_seconds"] = self._troop_hold_seconds_from_ui()
+        self.config["spell_deploy_seconds"] = self._spell_deploy_seconds_from_ui()
+        templates = self.config.setdefault("templates", {})
+        for key in self.template_fields:
+            path_var = self.path_vars.get(key)
+            threshold_var = self.threshold_vars.get(key)
+            if path_var is None or threshold_var is None:
+                continue
+
+            templates[key] = {
+                "path": path_var.get().strip(),
+                "threshold": float(threshold_var.get()),
+            }
+
+    def _troop_hold_seconds_from_ui(self) -> dict[str, float]:
+        hold_seconds_by_troop: dict[str, float] = {}
+
+        for troop_index in range(1, self.troop_count + 1):
+            hold_seconds_var = self.hold_seconds_vars.get(troop_index)
+            if hold_seconds_var is None:
+                hold_seconds = DEFAULT_TROOP_HOLD_SECONDS
+            else:
+                hold_seconds = float(hold_seconds_var.get())
+
+            if hold_seconds < 0.05 or hold_seconds > 10:
+                raise ValueError(
+                    f"Hold sec for Troop {troop_index} must be 0.05-10"
+                )
+
+            hold_seconds_by_troop[str(troop_index)] = hold_seconds
+
+        return hold_seconds_by_troop
+
+    def _spell_deploy_seconds_from_ui(self) -> dict[str, float]:
+        deploy_seconds_by_spell: dict[str, float] = {}
+
+        for spell_index in range(1, self.spell_count + 1):
+            deploy_seconds_var = self.hold_seconds_vars.get(-spell_index)
+            if deploy_seconds_var is None:
+                deploy_seconds = DEFAULT_SPELL_DEPLOY_SECONDS
+            else:
+                deploy_seconds = float(deploy_seconds_var.get())
+
+            if deploy_seconds < 0.1 or deploy_seconds > 10:
+                raise ValueError(
+                    f"Deploy sec for Spell {spell_index} must be 0.1-10"
+                )
+
+            deploy_seconds_by_spell[str(spell_index)] = deploy_seconds
+
+        return deploy_seconds_by_spell
+
+    def _add_troop(self) -> None:
+        try:
+            self._sync_template_values_to_config()
+        except (tk.TclError, ValueError):
+            messagebox.showerror(
+                "Invalid config",
+                "Fix score/order/hold values before adding a troop."
+            )
+            return
+
+        self.troop_count += 1
+        self.config["troop_count"] = self.troop_count
+        self.config["deploy_order"] = get_deploy_order(self.config)
+        self.config["troop_deploy_order"] = get_troop_deploy_order(self.config)
+        self.config["troop_hold_seconds"] = get_all_troop_hold_seconds(self.config)
+        self._render_template_rows()
+        self.status_var.set(f"Added Troop {self.troop_count}")
+
+    def _add_spell(self) -> None:
+        try:
+            self._sync_template_values_to_config()
+        except (tk.TclError, ValueError):
+            messagebox.showerror(
+                "Invalid config",
+                "Fix score/order/hold values before adding a spell."
+            )
+            return
+
+        self.spell_count += 1
+        self.config["spell_count"] = self.spell_count
+        self.config["deploy_order"] = get_deploy_order(self.config)
+        self.config["spell_deploy_seconds"] = get_all_spell_deploy_seconds(self.config)
+        self._render_template_rows()
+        self.status_var.set(f"Added Spell {self.spell_count}")
+
+    def _remove_troop(self, troop_index: int) -> None:
+        if self.troop_count <= 1:
+            messagebox.showinfo("Cannot remove", "At least one troop is required.")
+            return
+
+        try:
+            self._sync_template_values_to_config()
+        except (tk.TclError, ValueError):
+            messagebox.showerror(
+                "Invalid config",
+                "Fix score/order/hold values before removing a troop."
+            )
+            return
+
+        templates = self.config.setdefault("templates", {})
+        for index in range(troop_index, self.troop_count):
+            next_button_key = troop_button_key(index + 1)
+            next_empty_key = troop_empty_key(index + 1)
+            current_button_key = troop_button_key(index)
+            current_empty_key = troop_empty_key(index)
+
+            if next_button_key in templates:
+                templates[current_button_key] = templates[next_button_key]
+            if next_empty_key in templates:
+                templates[current_empty_key] = templates[next_empty_key]
+
+        last_button_key = troop_button_key(self.troop_count)
+        last_empty_key = troop_empty_key(self.troop_count)
+        templates.pop(last_button_key, None)
+        templates.pop(last_empty_key, None)
+        self.path_vars.pop(last_button_key, None)
+        self.path_vars.pop(last_empty_key, None)
+        self.threshold_vars.pop(last_button_key, None)
+        self.threshold_vars.pop(last_empty_key, None)
+        self.deploy_order_vars.pop(self.troop_count, None)
+        self.hold_seconds_vars.pop(self.troop_count, None)
+
+        deploy_order = []
+        for current_troop_index in get_troop_deploy_order(self.config):
+            if current_troop_index == troop_index:
+                continue
+            if current_troop_index > troop_index:
+                deploy_order.append(current_troop_index - 1)
+            else:
+                deploy_order.append(current_troop_index)
+
+        hold_seconds = {}
+        for current_troop_index in range(1, self.troop_count + 1):
+            if current_troop_index == troop_index:
+                continue
+
+            next_troop_index = (
+                current_troop_index - 1
+                if current_troop_index > troop_index
+                else current_troop_index
+            )
+            hold_seconds[str(next_troop_index)] = get_troop_hold_seconds(
+                self.config,
+                current_troop_index
+            )
+
+        item_deploy_order = []
+        for item_id in get_deploy_order(self.config):
+            kind, raw_index = item_id.split(":", 1)
+            current_index = int(raw_index)
+            if kind == "troop":
+                if current_index == troop_index:
+                    continue
+                if current_index > troop_index:
+                    item_deploy_order.append(f"troop:{current_index - 1}")
+                else:
+                    item_deploy_order.append(item_id)
+            else:
+                item_deploy_order.append(item_id)
+
+        self.troop_count -= 1
+        self.config["troop_count"] = self.troop_count
+        self.config["deploy_order"] = item_deploy_order
+        self.config["troop_deploy_order"] = deploy_order
+        self.config["troop_hold_seconds"] = hold_seconds
+        self._render_template_rows()
+        self.status_var.set(f"Removed Troop {troop_index}")
+
+    def _remove_spell(self, spell_index: int) -> None:
+        if self.spell_count <= 0:
+            return
+
+        try:
+            self._sync_template_values_to_config()
+        except (tk.TclError, ValueError):
+            messagebox.showerror(
+                "Invalid config",
+                "Fix score/order/hold values before removing a spell."
+            )
+            return
+
+        templates = self.config.setdefault("templates", {})
+        for index in range(spell_index, self.spell_count):
+            next_key = spell_button_key(index + 1)
+            next_empty_key = spell_empty_key(index + 1)
+            current_key = spell_button_key(index)
+            current_empty_key = spell_empty_key(index)
+            if next_key in templates:
+                templates[current_key] = templates[next_key]
+            if next_empty_key in templates:
+                templates[current_empty_key] = templates[next_empty_key]
+
+        last_key = spell_button_key(self.spell_count)
+        last_empty_key = spell_empty_key(self.spell_count)
+        templates.pop(last_key, None)
+        templates.pop(last_empty_key, None)
+        self.path_vars.pop(last_key, None)
+        self.path_vars.pop(last_empty_key, None)
+        self.threshold_vars.pop(last_key, None)
+        self.threshold_vars.pop(last_empty_key, None)
+        self.deploy_order_vars.pop(-self.spell_count, None)
+        self.hold_seconds_vars.pop(-self.spell_count, None)
+
+        deploy_seconds = {}
+        for current_spell_index in range(1, self.spell_count + 1):
+            if current_spell_index == spell_index:
+                continue
+
+            next_spell_index = (
+                current_spell_index - 1
+                if current_spell_index > spell_index
+                else current_spell_index
+            )
+            deploy_seconds[str(next_spell_index)] = get_spell_deploy_seconds(
+                self.config,
+                current_spell_index
+            )
+
+        item_deploy_order = []
+        for item_id in get_deploy_order(self.config):
+            kind, raw_index = item_id.split(":", 1)
+            current_index = int(raw_index)
+            if kind == "spell":
+                if current_index == spell_index:
+                    continue
+                if current_index > spell_index:
+                    item_deploy_order.append(f"spell:{current_index - 1}")
+                else:
+                    item_deploy_order.append(item_id)
+            else:
+                item_deploy_order.append(item_id)
+
+        self.spell_count -= 1
+        self.config["spell_count"] = self.spell_count
+        self.config["deploy_order"] = item_deploy_order
+        self.config["spell_deploy_seconds"] = deploy_seconds
+        self._render_template_rows()
+        self.status_var.set(f"Removed Spell {spell_index}")
+
     def _browse_image(self, key: str) -> None:
         file_path = filedialog.askopenfilename(
             title="Select template image",
@@ -1471,6 +2384,7 @@ class FarmBotApp:
 
         if file_path:
             self.path_vars[key].set(file_path)
+            self._refresh_preview(key)
 
     def _refresh_devices(self, show_status: bool = True) -> None:
         devices, other_devices = list_adb_devices()
@@ -1566,22 +2480,35 @@ class FarmBotApp:
 
     def _set_cropped_image(self, key: str, cropped_path: str) -> None:
         self.path_vars[key].set(cropped_path)
+        self._refresh_preview(key)
         self.status_var.set(f"Saved crop: {cropped_path}")
 
     def _build_config_from_ui(self) -> dict:
-        config = default_config()
+        self.spell_count = 0
+        config = default_config(self.troop_count, self.spell_count)
         config["device_id"] = self._selected_device_id()
         config["max_rounds"] = self.max_rounds_var.get().strip()
         config["delay_between_rounds_seconds"] = int(self.delay_var.get())
         config["restart_wait_seconds"] = int(self.restart_wait_var.get())
+        config["troop_count"] = self.troop_count
+        config["spell_count"] = self.spell_count
+        deploy_order = self._deploy_order_from_ui()
+        config["deploy_order"] = deploy_order
+        config["troop_deploy_order"] = [
+            int(item_id.split(":", 1)[1])
+            for item_id in deploy_order
+            if item_id.startswith("troop:")
+        ]
+        config["troop_hold_seconds"] = self._troop_hold_seconds_from_ui()
+        config["spell_deploy_seconds"] = self._spell_deploy_seconds_from_ui()
 
         if not config["device_id"] and len(self.connected_devices) > 1:
             raise ValueError("Multiple devices connected. Select one Device ID.")
 
-        for key in TEMPLATE_FIELDS:
+        for key in self.template_fields:
             threshold = float(self.threshold_vars[key].get())
             if threshold <= 0 or threshold > 1:
-                raise ValueError(f"Score for {TEMPLATE_FIELDS[key]['label']} must be 0-1")
+                raise ValueError(f"Score for {self.template_fields[key]['label']} must be 0-1")
 
             config["templates"][key] = {
                 "path": self.path_vars[key].get().strip(),
@@ -1589,7 +2516,7 @@ class FarmBotApp:
             }
 
             if not config["templates"][key]["path"]:
-                raise ValueError(f"Image is empty: {TEMPLATE_FIELDS[key]['label']}")
+                raise ValueError(f"Image is empty: {self.template_fields[key]['label']}")
 
         return config
 
@@ -1604,17 +2531,14 @@ class FarmBotApp:
 
     def _load_config_into_ui(self) -> None:
         self.config = load_config()
+        self.troop_count = get_troop_count(self.config)
+        self.spell_count = 0
         self.device_var.set(str(self.config.get("device_id", "")))
         self.max_rounds_var.set(str(self.config.get("max_rounds", "")))
         self.delay_var.set(int(self.config.get("delay_between_rounds_seconds", 10)))
         self.restart_wait_var.set(int(self.config.get("restart_wait_seconds", 25)))
 
-        for key in TEMPLATE_FIELDS:
-            self.path_vars[key].set(self.config["templates"][key]["path"])
-            self.threshold_vars[key].set(
-                float(self.config["templates"][key]["threshold"])
-            )
-
+        self._render_template_rows()
         self._refresh_devices(show_status=False)
         self.status_var.set(f"Loaded {CONFIG_PATH}")
 

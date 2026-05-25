@@ -1,12 +1,30 @@
 {
-  "device_id": "R5CXB2DLC2Y",
+  "device_id": "RFCNC0PYFTY",
   "max_rounds": "",
   "delay_between_rounds_seconds": 10,
   "restart_wait_seconds": 25,
+  "troop_count": 3,
+  "spell_count": 0,
+  "deploy_order": [
+    "troop:1",
+    "troop:2",
+    "troop:3"
+  ],
+  "troop_deploy_order": [
+    1,
+    2,
+    3
+  ],
+  "troop_hold_seconds": {
+    "1": 0.9,
+    "2": 0.5,
+    "3": 0.05
+  },
+  "spell_deploy_seconds": {},
   "templates": {
     "attack_home": {
       "path": "templates/attack_home.jpg",
-      "threshold": 0.7
+      "threshold": 0.5
     },
     "find_match": {
       "path": "templates/find_match.jpg",
@@ -21,27 +39,27 @@
       "threshold": 0.75
     },
     "troop_1": {
-      "path": "C:/Users/duyhung.tr/Desktop/New folder - Copy/templates/troop_1.jpg",
+      "path": "C:\\Users\\duyhung.tr\\Desktop\\New folder - Copy\\templates\\custom\\troop_1_1779726593.png",
       "threshold": 0.75
     },
     "troop_empty_1": {
-      "path": "C:\\Users\\duyhung.tr\\Desktop\\New folder - Copy\\templates\\custom\\troop_empty_1_1779717783.png",
+      "path": "C:\\Users\\duyhung.tr\\Desktop\\New folder - Copy\\templates\\custom\\troop_empty_1_1779726608.png",
       "threshold": 0.7
     },
     "troop_2": {
-      "path": "C:/Users/duyhung.tr/Desktop/New folder - Copy/templates/troop_2.jpg",
+      "path": "C:\\Users\\duyhung.tr\\Desktop\\New folder - Copy\\templates\\custom\\troop_2_1779726623.png",
       "threshold": 0.75
     },
     "troop_empty_2": {
-      "path": "C:\\Users\\duyhung.tr\\Desktop\\New folder - Copy\\templates\\custom\\troop_empty_2_1779717804.png",
+      "path": "C:\\Users\\duyhung.tr\\Desktop\\New folder - Copy\\templates\\custom\\troop_empty_2_1779726642.png",
       "threshold": 0.7
     },
     "troop_3": {
-      "path": "C:/Users/duyhung.tr/Desktop/New folder - Copy/templates/troop_3.jpg",
+      "path": "C:\\Users\\duyhung.tr\\Desktop\\New folder - Copy\\templates\\custom\\troop_4_1779727508.png",
       "threshold": 0.75
     },
     "troop_empty_3": {
-      "path": "C:\\Users\\duyhung.tr\\Desktop\\New folder - Copy\\templates\\custom\\troop_empty_3_1779717837.png",
+      "path": "C:\\Users\\duyhung.tr\\Desktop\\New folder - Copy\\templates\\custom\\troop_empty_4_1779727518.png",
       "threshold": 0.7
     },
     "return_home": {
