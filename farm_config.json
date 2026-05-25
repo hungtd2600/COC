@@ -20,12 +20,28 @@
       "path": "templates/next_button.jpg",
       "threshold": 0.75
     },
-    "troop": {
-      "path": "templates\\custom\\troop_1779204775.png",
+    "troop_1": {
+      "path": "C:/Users/duyhung.tr/Desktop/New folder - Copy/templates/troop_1.jpg",
       "threshold": 0.75
     },
-    "troop_empty": {
-      "path": "templates\\custom\\troop_empty_1779204875.png",
+    "troop_empty_1": {
+      "path": "C:\\Users\\duyhung.tr\\Desktop\\New folder - Copy\\templates\\custom\\troop_empty_1_1779717783.png",
+      "threshold": 0.7
+    },
+    "troop_2": {
+      "path": "C:/Users/duyhung.tr/Desktop/New folder - Copy/templates/troop_2.jpg",
+      "threshold": 0.75
+    },
+    "troop_empty_2": {
+      "path": "C:\\Users\\duyhung.tr\\Desktop\\New folder - Copy\\templates\\custom\\troop_empty_2_1779717804.png",
+      "threshold": 0.7
+    },
+    "troop_3": {
+      "path": "C:/Users/duyhung.tr/Desktop/New folder - Copy/templates/troop_3.jpg",
+      "threshold": 0.75
+    },
+    "troop_empty_3": {
+      "path": "C:\\Users\\duyhung.tr\\Desktop\\New folder - Copy\\templates\\custom\\troop_empty_3_1779717837.png",
       "threshold": 0.7
     },
     "return_home": {

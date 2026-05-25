@@ -88,13 +88,33 @@ TEMPLATE_FIELDS = {
         "path": "templates/next_button.jpg",
         "threshold": 0.75,
     },
-    "troop": {
-        "label": "Troop button",
+    "troop_1": {
+        "label": "Troop 1 button",
         "path": "templates/troop_balloon.jpg",
         "threshold": 0.75,
     },
-    "troop_empty": {
-        "label": "Troop empty indicator",
+    "troop_empty_1": {
+        "label": "Troop 1 empty indicator",
+        "path": "templates/troop_empty.jpg",
+        "threshold": 0.70,
+    },
+    "troop_2": {
+        "label": "Troop 2 button",
+        "path": "templates/troop_balloon.jpg",
+        "threshold": 0.75,
+    },
+    "troop_empty_2": {
+        "label": "Troop 2 empty indicator",
+        "path": "templates/troop_empty.jpg",
+        "threshold": 0.70,
+    },
+    "troop_3": {
+        "label": "Troop 3 button",
+        "path": "templates/troop_balloon.jpg",
+        "threshold": 0.75,
+    },
+    "troop_empty_3": {
+        "label": "Troop 3 empty indicator",
         "path": "templates/troop_empty.jpg",
         "threshold": 0.70,
     },
@@ -104,6 +124,25 @@ TEMPLATE_FIELDS = {
         "threshold": 0.75,
     },
 }
+
+
+TROOP_SLOTS = [
+    {
+        "name": "Troop 1",
+        "button_key": "troop_1",
+        "empty_key": "troop_empty_1",
+    },
+    {
+        "name": "Troop 2",
+        "button_key": "troop_2",
+        "empty_key": "troop_empty_2",
+    },
+    {
+        "name": "Troop 3",
+        "button_key": "troop_3",
+        "empty_key": "troop_empty_3",
+    },
+]
 
 
 def default_config() -> dict:
@@ -136,7 +175,18 @@ def load_config(config_path: str | Path = CONFIG_PATH) -> dict:
         return config
 
     config.update({key: value for key, value in loaded.items() if key != "templates"})
-    for key, value in loaded.get("templates", {}).items():
+    loaded_templates = dict(loaded.get("templates", {}))
+    legacy_template_keys = {
+        "troop": "troop_1",
+        "troop_empty": "troop_empty_1",
+        "troop_2_empty": "troop_empty_2",
+        "troop_3_empty": "troop_empty_3",
+    }
+    for old_key, new_key in legacy_template_keys.items():
+        if old_key in loaded_templates and new_key not in loaded_templates:
+            loaded_templates[new_key] = loaded_templates[old_key]
+
+    for key, value in loaded_templates.items():
         if key in config["templates"] and isinstance(value, dict):
             config["templates"][key].update(value)
 
@@ -653,21 +703,32 @@ def zoom_out_home_view(device_id: Optional[str] = None) -> bool:
 def select_troop(
     bot: AdbImageBot,
     config: dict,
+    troop_slot: Optional[dict] = None,
     stop_event: Optional[threading.Event] = None
 ) -> bool:
+    if troop_slot is None:
+        troop_slot = TROOP_SLOTS[0]
+
     return bot.wait_and_tap_image(
-        template_path=template_path(config, "troop"),
-        threshold=template_threshold(config, "troop"),
+        template_path=template_path(config, troop_slot["button_key"]),
+        threshold=template_threshold(config, troop_slot["button_key"]),
         interval_seconds=2,
         timeout_seconds=30,
         stop_event=stop_event
     )
 
 
-def is_troop_empty(bot: AdbImageBot, config: dict) -> bool:
+def is_troop_empty(
+    bot: AdbImageBot,
+    config: dict,
+    troop_slot: Optional[dict] = None
+) -> bool:
+    if troop_slot is None:
+        troop_slot = TROOP_SLOTS[0]
+
     return bot.find_image(
-        template_path=template_path(config, "troop_empty"),
-        threshold=template_threshold(config, "troop_empty")
+        template_path=template_path(config, troop_slot["empty_key"]),
+        threshold=template_threshold(config, troop_slot["empty_key"])
     ) is not None
 
 
@@ -704,10 +765,14 @@ def deploy_at_two_corner_points_until_empty(
     bot: AdbImageBot,
     device_id: Optional[str] = None,
     config: Optional[dict] = None,
+    troop_slot: Optional[dict] = None,
     stop_event: Optional[threading.Event] = None
 ) -> bool:
     if config is None:
         config = default_config()
+
+    if troop_slot is None:
+        troop_slot = TROOP_SLOTS[0]
 
     device = connect_uiautomator2(device_id)
     if device is None:
@@ -750,8 +815,8 @@ def deploy_at_two_corner_points_until_empty(
             print("Stopped before next deploy pair")
             return False
 
-        if is_troop_empty(bot, config):
-            print("Troop is empty before next deploy pair")
+        if is_troop_empty(bot, config, troop_slot):
+            print(f"{troop_slot['name']} is empty before next deploy pair")
             return True
 
         left_x = int(width * pair["left"][0])
@@ -771,16 +836,16 @@ def deploy_at_two_corner_points_until_empty(
             right_x=right_x,
             right_y=right_y,
             total_seconds=10,
-            hold_each_seconds=2
+            hold_each_seconds=1
         )
 
         time.sleep(retry_delay_seconds)
 
-        if is_troop_empty(bot, config):
-            print("Troop is empty")
+        if is_troop_empty(bot, config, troop_slot):
+            print(f"{troop_slot['name']} is empty")
             return True
 
-    print("Troop is not empty after all deploy pairs")
+    print(f"{troop_slot['name']} is not empty after all deploy pairs")
     return False
 
 
@@ -880,24 +945,30 @@ def run_single_farm_round(
 
     print("Base view adjusted")
 
-    print("\nStep 6 - Select troop")
-    if not select_troop(bot, config, stop_event=stop_event):
-        print("Failed to select troop")
-        return False
+    for troop_index, troop_slot in enumerate(TROOP_SLOTS, start=1):
+        if stop_event and stop_event.is_set():
+            print("Stopped before next troop")
+            return False
 
-    print("Troop selected")
+        print(f"\nStep 6.{troop_index} - Select {troop_slot['name']}")
+        if not select_troop(bot, config, troop_slot, stop_event=stop_event):
+            print(f"Failed to select {troop_slot['name']}")
+            return False
 
-    print("\nStep 7 - Deploy troop at two corner points")
-    if not deploy_at_two_corner_points_until_empty(
-        bot,
-        device_id=device_id,
-        config=config,
-        stop_event=stop_event
-    ):
-        print("Failed to deploy all troops")
-        return False
+        print(f"{troop_slot['name']} selected")
 
-    print("Troop deployed completely")
+        print(f"\nStep 7.{troop_index} - Deploy {troop_slot['name']} at two corner points")
+        if not deploy_at_two_corner_points_until_empty(
+            bot,
+            device_id=device_id,
+            config=config,
+            troop_slot=troop_slot,
+            stop_event=stop_event
+        ):
+            print(f"Failed to deploy all {troop_slot['name']}")
+            return False
+
+        print(f"{troop_slot['name']} deployed completely")
 
     print("\nStep 8 - Wait and Return Home")
     if not wait_and_return_home(bot, config, stop_event=stop_event):
